@@ -1,0 +1,118 @@
+#!/usr/bin/env perl
+
+use strict;
+use warnings;
+use Getopt::Std;
+
+my %opts = (t=>8);
+getopts("t:d:x:", \%opts);
+
+die("Usage: run-dipcall [options] <prefix> <ref.fa> <pat.fa> <mat.fa>
+Options:
+  -t INT     number of threads [$opts{t}]
+  -d FILE    minimap2 index for ref.fa []
+  -x FILE    PAR on chrX; assuming male
+") if @ARGV < 4;
+
+# test file existence
+my $pre = shift(@ARGV);
+my $ref = shift(@ARGV);
+my @hap = @ARGV;
+die "ERROR: failed to read the reference file '$ref'\n" unless -f $ref;
+die "ERROR: please index the reference with 'samtools faidx'\n" unless -f "$ref.fai";
+die "ERROR: failed to read the 1st haplotype '$hap[0]'\n" unless -f $hap[0];
+die "ERROR: failed to read the 2nd haplotype '$hap[1]'\n" unless -f $hap[1];
+my $is_male = defined($opts{x})? 1 : 0;
+if (defined $opts{x}) {
+	die "ERROR: failed to read PAR\n" unless -f $opts{x};
+	$is_male = 1;
+}
+
+# find the root directory
+my $exepath = $0 =~/^\S+\/[^\/\s]+/? $0 : &which($0);
+my $root = $0 =~/^(\S+)\/[^\/\s]+/? $1 : undef;
+$root = $exepath =~/^(\S+)\/[^\/\s]+/? $1 : undef if !defined($root);
+die "ERROR: failed to locate the root directory\n" if !defined($root);
+
+# minimap2 settings
+my $mm2_opt = q/-xasm5 --cs -r2k -t$(N_THREADS)/;
+my $mm2_idx = defined($opts{d})? $opts{d} : $ref;
+
+# write Makefile
+my @mak = ();
+
+push(@mak, "ROOT=$root");
+push(@mak, "N_THREADS=$opts{t}");
+push(@mak, "MM2_IDX=$mm2_idx");
+push(@mak, "MM2_OPT=$mm2_opt");
+push(@mak, "REF_FA=$ref");
+push(@mak, "");
+
+push(@mak, "all:$pre.dip.bed $pre.dip.vcf.gz", "");
+
+push(@mak, "$pre.hap1.paf.gz:$hap[0]");
+push(@mak, q{	$(ROOT)/minimap2 -c --paf-no-hit $(MM2_OPT) $(MM2_IDX) $< 2> $@.log | gzip > $@});
+push(@mak, "$pre.hap2.paf.gz:$hap[1]");
+push(@mak, q{	$(ROOT)/minimap2 -c --paf-no-hit $(MM2_OPT) $(MM2_IDX) $< 2> $@.log | gzip > $@});
+push(@mak, "");
+
+push(@mak, "$pre.hap1.sam.gz:$hap[0]");
+push(@mak, q{	$(ROOT)/minimap2 -a $(MM2_OPT) $(MM2_IDX) $< 2> $@.log | gzip > $@});
+push(@mak, "$pre.hap2.sam.gz:$hap[1]");
+push(@mak, q{	$(ROOT)/minimap2 -a $(MM2_OPT) $(MM2_IDX) $< 2> $@.log | gzip > $@});
+push(@mak, "");
+
+push(@mak, "$pre.hap1.bam:$pre.hap1.sam.gz");
+push(@mak, q{	$(ROOT)/k8 $(ROOT)/dipcall-aux.js samflt $< | $(ROOT)/samtools sort -m4G --threads 4 -o $@ -});
+push(@mak, "$pre.hap2.bam:$pre.hap2.sam.gz");
+push(@mak, q{	$(ROOT)/k8 $(ROOT)/dipcall-aux.js samflt $< | $(ROOT)/samtools sort -m4G --threads 4 -o $@ -});
+push(@mak, "");
+
+push(@mak, "$pre.pair.vcf.gz:$pre.hap1.bam $pre.hap2.bam");
+push(@mak, q{	$(ROOT)/htsbox pileup -q5 -evcf $(REF_FA) $^ | $(ROOT)/htsbox bgzip > $@});
+push(@mak, "$pre.dip.vcf.gz:$pre.pair.vcf.gz");
+if ($is_male) {
+	push(@mak, q{	$(ROOT)/k8 $(ROOT)/dipcall-aux.js vcfpair } . qq{-p $opts{x}} . q{ $< | $(ROOT)/htsbox bgzip > $@});
+} else {
+	push(@mak, q{	$(ROOT)/k8 $(ROOT)/dipcall-aux.js vcfpair $< | $(ROOT)/htsbox bgzip > $@});
+}
+push(@mak, "");
+
+push(@mak, "$pre.hap1.var.gz:$pre.hap1.paf.gz");
+push(@mak, q{	gzip -dc $< | sort -k6,6 -k8,8n | $(ROOT)/k8 $(ROOT)/paftools.js call - 2> $@.vst | gzip > $@});
+push(@mak, "$pre.hap2.var.gz:$pre.hap2.paf.gz");
+push(@mak, q{	gzip -dc $< | sort -k6,6 -k8,8n | $(ROOT)/k8 $(ROOT)/paftools.js call - 2> $@.vst | gzip > $@});
+push(@mak, "$pre.hap1.bed:$pre.hap1.var.gz");
+push(@mak, q{	gzip -dc $< | grep ^R | cut -f2- > $@});
+push(@mak, "$pre.hap2.bed:$pre.hap2.var.gz");
+push(@mak, q{	gzip -dc $< | grep ^R | cut -f2- > $@});
+push(@mak, "$pre.dip.bed:$pre.hap1.bed $pre.hap2.bed");
+if ($is_male) {
+	my $bedtk = '$(ROOT)/bedtk';
+	my @cmd;
+	push(@cmd, "$bedtk isec $pre.hap1.bed $pre.hap2.bed | egrep -v '^(chr)?[XY]' > $pre.tmp.bed"); # autosome
+	push(@cmd, "$bedtk isec $pre.hap1.bed $pre.hap2.bed | $bedtk isec $opts{x} >> $pre.tmp.bed");  # chrX PAR
+	push(@cmd, "$bedtk sub $pre.hap1.bed $pre.hap2.bed | egrep '^(chr)?X' | $bedtk sub $opts{x} >> $pre.tmp.bed"); # chrX non-PAR
+	push(@cmd, "$bedtk sub $pre.hap2.bed $pre.hap1.bed | egrep '^(chr)?Y' >> $pre.tmp.bed");       # chrY non-PAR
+	push(@cmd, "$bedtk sort $pre.tmp.bed > " . '$@');
+	push(@mak, "\t" . join("; ", @cmd));
+} else {
+	push(@mak, q{	$(ROOT)/bedtk isec -m $^ > $@});
+}
+push(@mak, "");
+
+print(join("\n", @mak));
+
+exit(0);
+
+# auxiliary routines
+sub which {
+	my $file = shift;
+	my $path = (@_)? shift : $ENV{PATH};
+	return if (!defined($path));
+	foreach my $x (split(":", $path)) {
+		$x =~ s/\/$//;
+		return "$x/$file" if (-x "$x/$file");
+	}
+	return;
+}
