@@ -4,6 +4,8 @@ use strict;
 use warnings;
 use Getopt::Std;
 
+my $version = "0.1";
+
 my %opts = (t=>8);
 getopts("t:d:x:", \%opts);
 

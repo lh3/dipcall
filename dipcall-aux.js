@@ -1,5 +1,7 @@
 #!/usr/bin/env k8
 
+var version = "0.1";
+
 var getopt = function(args, ostr) {
 	var oli; // option letter list index
 	if (typeof(getopt.place) == 'undefined')
@@ -194,12 +196,14 @@ function main(args)
 		print("Commands:");
 		print("  samflt     filter SAM file");
 		print("  vcfpair    convert 2-sample VCF to phased VCF");
+		print("  version    print version number");
 		exit(1);
 	}
 
 	var cmd = args.shift();
 	if (cmd == 'samflt') samflt(args);
 	else if (cmd == 'vcfpair') vcfpair(args);
+	else if (cmd == 'version') print(version);
 	else throw("unrecognized command: " + cmd);
 }
 
