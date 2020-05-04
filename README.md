@@ -35,8 +35,8 @@ covers the variant. Note that if a call is covered by multiple >=50kb
 alignments in the same parent but the alignments all have the same allele, the
 call is not filtered in the VCF.
 
-The BED file gives the confident regions. A base is included in the BED if
-1) it is covered by one >=50kb alignment with mapQ>=5 from each parent and 2)
+The BED file gives the confident regions. A base is included in the BED if 1)
+it is covered by one >=50kb alignment with mapQ>=5 from each parent and 2)
 it is not covered by other >=10kb alignments in each parent. Nearly all calls
 filtered in the VCF are excluded in the BED, except very rare edge cases.
 However, a fraction of unfiltered calls in the VCF may also be excluded by the
