@@ -189,6 +189,125 @@ function samflt(args)
 	file.close();
 }
 
+function it_index(a) {
+	if (a.length == 0) return -1;
+	a.sort(function(x, y) { return x[0] - y[0] });
+	var last, last_i;
+	for (var i = 0; i < a.length; i += 2) last = a[i][2] = a[i][1], last_i = i;
+	for (var k = 1; 1<<k <= a.length; ++k) {
+		var i0 = (1<<k) - 1, step = 1<<(k+1);
+		for (var i = i0; i < a.length; i += step) {
+			var x = 1<<(k-1);
+			a[i][2] = a[i][1];
+			if (a[i][2] < a[i-x][2]) a[i][2] = a[i-x][2];
+			var e = i + x < a.length? a[i+x][2] : last;
+			if (a[i][2] < e) a[i][2] = e;
+		}
+		last_i = last_i>>k&1? last_i - (1<<(k-1)) : last_i + (1<<(k-1));
+		if (last_i < a.length) last = last > a[last_i][2]? last : a[last_i][2];
+	}
+	return k - 1;
+}
+
+function it_overlap(a, st, en) {
+	var h, stack = [], b = [];
+	for (h = 0; 1<<h <= a.length; ++h);
+	--h;
+	stack.push([(1<<h) - 1, h, 0]);
+	while (stack.length) {
+		var t = stack.pop();
+		var x = t[0], h = t[1], w = t[2];
+		if (h <= 3) {
+			var i0 = x >> h << h, i1 = i0 + (1<<(h+1)) - 1;
+			if (i1 >= a.length) i1 = a.length;
+			for (var i = i0; i < i1 && a[i][0] < en; ++i)
+				if (st < a[i][1]) b.push(a[i]);
+		} else if (w == 0) { // if left child not processed
+			stack.push([x, h, 1]);
+			var y = x - (1<<(h-1));
+			if (y >= a.length || a[y][2] > st)
+				stack.push([y, h - 1, 0]);
+		} else if (x < a.length && a[x][0] < en) {
+			if (st < a[x][1]) b.push(a[x]);
+			stack.push([x + (1<<(h-1)), h - 1, 0]);
+		}
+	}
+	return b;
+}
+
+function dipsum(args) {
+	if (args.length < 2) {
+		print("Usage: dipcall-aux.js dipsum <in.dip.bed> <in.dip.vcf>");
+		return;
+	}
+	var file, buf = new Bytes();
+
+	var bed = {};
+	file = new File(args[0]);
+	var sum_len = 0;
+	while (file.readline(buf) >= 0) {
+		var t = buf.toString().split("\t");
+		if (bed[t[0]] == null) bed[t[0]] = [];
+		var st = parseInt(t[1]), en = parseInt(t[2]);
+		bed[t[0]].push([st, en]);
+		sum_len += en - st; // TODO: this assumes no overlaps
+	}
+	file.close();
+	for (var ctg in bed) it_index(bed[ctg]);
+
+	var c = [[0, 0, 0, 0, 0], [0, 0, 0, 0, 0]];
+	file = new File(args[1]);
+	while (file.readline(buf) >= 0) {
+		var l = buf.toString();
+		if (l[0] == '#') continue;
+		var t = l.split("\t");
+		if (/^(chr)?(X|Y|M)$/.test(t[0])) continue; // skip sex chromosomes
+		if (t[6] != '.' && t[6] != "PASS") continue; // filtered
+		if (bed[t[0]] == null) continue;
+		var ref = t[3];
+		var st = parseInt(t[1]) - 1;
+		var en = st + ref.length;
+		var a = it_overlap(bed[t[0]], st, en);
+		if (a.length == 0) continue;
+		// determine the variant type
+		var alt = t[4].split(","), vt = null;
+		for (var i = 0; i < alt.length; ++i) {
+			var x = alt[i], y;
+			if (x == '*') y = 3;
+			if (x.length == ref.length) y = 0;
+			else if (x.length > ref.length) y = 1;
+			else y = 2;
+			if (i == 0) vt = y;
+			else if (vt != y) {
+				vt = 4;
+				break;
+			}
+		}
+		// determine genotype
+		var s = t[9].split(":");
+		var gt = s[0].split("|");
+		if (gt.length != 2) throw Error("wrong genotype");
+		if (gt[0] == '.' || gt[1] == '.') continue;
+		gt[0] = parseInt(gt[0]);
+		gt[1] = parseInt(gt[1]);
+		var k = gt[0] == gt[1]? 0 : 1;
+		++c[k][vt];
+	}
+	file.close();
+	print("Length of confident regions: " + sum_len);
+	print("# Hom SNP: " + c[0][0]);
+	print("# Hom INS: " + c[0][1]);
+	print("# Hom DEL: " + c[0][2]);
+	print("# Het SNP: " + c[1][0]);
+	print("# Het INS: " + c[1][1]);
+	print("# Het DEL: " + c[1][2]);
+	print("# Het mixed: " + c[1][4]);
+	print("SNP heterozygosity: " + (c[1][0] / sum_len).toFixed(6));
+	print("Variant heterozygosity: " + ((c[1][0] + c[1][1] + c[1][2] + c[1][4]) / sum_len).toFixed(6));
+
+	buf.destroy();
+}
+
 function main(args)
 {
 	if (args.length == 0) {
@@ -196,6 +315,7 @@ function main(args)
 		print("Commands:");
 		print("  samflt     filter SAM file");
 		print("  vcfpair    convert 2-sample VCF to phased VCF");
+		print("  dipsum     summarize dipcall results");
 		print("  version    print version number");
 		exit(1);
 	}
@@ -203,6 +323,7 @@ function main(args)
 	var cmd = args.shift();
 	if (cmd == 'samflt') samflt(args);
 	else if (cmd == 'vcfpair') vcfpair(args);
+	else if (cmd == 'dipsum') dipsum(args);
 	else if (cmd == 'version') print(version);
 	else throw("unrecognized command: " + cmd);
 }
