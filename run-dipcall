@@ -4,16 +4,17 @@ use strict;
 use warnings;
 use Getopt::Std;
 
-my $version = "0.1";
+my $version = "0.2";
 
 my %opts = (t=>8);
-getopts("t:d:x:", \%opts);
+getopts("t:d:x:m", \%opts);
 
 die("Usage: run-dipcall [options] <prefix> <ref.fa> <pat.fa> <mat.fa>
 Options:
   -t INT     number of threads [$opts{t}]
-  -d FILE    minimap2 index for ref.fa []
+  -d FILE    unimap/minimap2 index for ref.fa []
   -x FILE    PAR on chrX; assuming male
+  -m         use minimap2 for mapping
 ") if @ARGV < 4;
 
 # test file existence
@@ -37,7 +38,9 @@ $root = $exepath =~/^(\S+)\/[^\/\s]+/? $1 : undef if !defined($root);
 die "ERROR: failed to locate the root directory\n" if !defined($root);
 
 # minimap2 settings
-my $mm2_opt = q/-xasm5 --cs -r2k -t$(N_THREADS)/;
+my $mapper = defined($opts{m})? "minimap2" : "unimap";
+my $mm2_opt = q/-xasm5 --cs -t$(N_THREADS)/;
+$mm2_opt .= " -r2k" if defined($opts{m});
 my $mm2_idx = defined($opts{d})? $opts{d} : $ref;
 
 # write Makefile
@@ -45,6 +48,7 @@ my @mak = ();
 
 push(@mak, "ROOT=$root");
 push(@mak, "N_THREADS=$opts{t}");
+push(@mak, "MAPPER=$mapper");
 push(@mak, "MM2_IDX=$mm2_idx");
 push(@mak, "MM2_OPT=$mm2_opt");
 push(@mak, "REF_FA=$ref");
@@ -53,15 +57,15 @@ push(@mak, "");
 push(@mak, "all:$pre.dip.bed $pre.dip.vcf.gz", "");
 
 push(@mak, "$pre.hap1.paf.gz:$hap[0]");
-push(@mak, q{	$(ROOT)/minimap2 -c --paf-no-hit $(MM2_OPT) $(MM2_IDX) $< 2> $@.log | gzip > $@});
+push(@mak, q{	$(ROOT)/$(MAPPER) -c --paf-no-hit $(MM2_OPT) $(MM2_IDX) $< 2> $@.log | gzip > $@});
 push(@mak, "$pre.hap2.paf.gz:$hap[1]");
-push(@mak, q{	$(ROOT)/minimap2 -c --paf-no-hit $(MM2_OPT) $(MM2_IDX) $< 2> $@.log | gzip > $@});
+push(@mak, q{	$(ROOT)/$(MAPPER) -c --paf-no-hit $(MM2_OPT) $(MM2_IDX) $< 2> $@.log | gzip > $@});
 push(@mak, "");
 
 push(@mak, "$pre.hap1.sam.gz:$hap[0]");
-push(@mak, q{	$(ROOT)/minimap2 -a $(MM2_OPT) $(MM2_IDX) $< 2> $@.log | gzip > $@});
+push(@mak, q{	$(ROOT)/$(MAPPER) -a $(MM2_OPT) $(MM2_IDX) $< 2> $@.log | gzip > $@});
 push(@mak, "$pre.hap2.sam.gz:$hap[1]");
-push(@mak, q{	$(ROOT)/minimap2 -a $(MM2_OPT) $(MM2_IDX) $< 2> $@.log | gzip > $@});
+push(@mak, q{	$(ROOT)/$(MAPPER) -a $(MM2_OPT) $(MM2_IDX) $< 2> $@.log | gzip > $@});
 push(@mak, "");
 
 push(@mak, "$pre.hap1.bam:$pre.hap1.sam.gz");
@@ -94,8 +98,8 @@ if ($is_male) {
 	my @cmd;
 	push(@cmd, "$bedtk isec $pre.hap1.bed $pre.hap2.bed | egrep -v '^(chr)?[XY]' > $pre.tmp.bed"); # autosome
 	push(@cmd, "$bedtk isec $pre.hap1.bed $pre.hap2.bed | $bedtk isec $opts{x} >> $pre.tmp.bed");  # chrX PAR
-	push(@cmd, "$bedtk sub $pre.hap1.bed $pre.hap2.bed | egrep '^(chr)?X' | $bedtk sub $opts{x} >> $pre.tmp.bed"); # chrX non-PAR
-	push(@cmd, "$bedtk sub $pre.hap2.bed $pre.hap1.bed | egrep '^(chr)?Y' >> $pre.tmp.bed");       # chrY non-PAR
+	push(@cmd, "$bedtk sub $pre.hap2.bed $pre.hap1.bed | egrep '^(chr)?X' | $bedtk sub - $opts{x} >> $pre.tmp.bed"); # chrX non-PAR
+	push(@cmd, "$bedtk sub $pre.hap1.bed $pre.hap2.bed | egrep '^(chr)?Y' >> $pre.tmp.bed");       # chrY non-PAR
 	push(@cmd, "$bedtk sort $pre.tmp.bed > " . '$@');
 	push(@mak, "\t" . join("; ", @cmd));
 } else {
