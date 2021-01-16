@@ -96,6 +96,7 @@ function vcfpair(args)
 			continue;
 		}
 		var t = line.split("\t");
+		if (/N/.test(t[4])) continue;
 		if (!re_ctg.test(t[0])) continue;
 		var GT = null, AD = null, FILTER = [], HT = [null, null];
 		for (var i = 0; i < 2; ++i) {
