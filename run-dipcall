@@ -7,14 +7,16 @@ use Getopt::Std;
 my $version = "0.2";
 
 my %opts = (t=>8);
-getopts("t:d:x:m", \%opts);
+getopts("t:d:x:mz:W:", \%opts);
 
 die("Usage: run-dipcall [options] <prefix> <ref.fa> <pat.fa> <mat.fa>
 Options:
   -t INT     number of threads [$opts{t}]
   -d FILE    unimap/minimap2 index for ref.fa []
   -x FILE    PAR on chrX; assuming male
+  -z INT     Z-drop [mapper default]
   -m         use minimap2 for mapping
+  -W FILE    repetitive k-mer list; use winnowmap for mapping
 ") if @ARGV < 4;
 
 # test file existence
@@ -37,10 +39,17 @@ my $root = $0 =~/^(\S+)\/[^\/\s]+/? $1 : undef;
 $root = $exepath =~/^(\S+)\/[^\/\s]+/? $1 : undef if !defined($root);
 die "ERROR: failed to locate the root directory\n" if !defined($root);
 
-# minimap2 settings
-my $mapper = defined($opts{m})? "minimap2" : "unimap";
+# mapper settings
+my $mapper = "unimap";
 my $mm2_opt = q/-xasm5 --cs -t$(N_THREADS)/;
-$mm2_opt .= " -r2k" if defined($opts{m});
+if (defined $opts{W}) {
+	$mapper = "winnowmap";
+	$mm2_opt .= " -r2k -W $opts{W}";
+} elsif (defined $opts{m}) {
+	$mapper = "minimap2";
+	$mm2_opt .= " -r2k";
+}
+$mm2_opt .= " -z$opts{z},200" if defined($opts{z});
 my $mm2_idx = defined($opts{d})? $opts{d} : $ref;
 
 # write Makefile
