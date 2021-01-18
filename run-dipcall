@@ -15,7 +15,7 @@ Options:
   -d FILE    unimap/minimap2 index for ref.fa []
   -x FILE    PAR on chrX; assuming male
   -z INT     Z-drop [mapper default]
-  -m         use minimap2 for mapping
+  -m         use minimap2 for mapping (unimap by default)
   -W FILE    repetitive k-mer list; use winnowmap for mapping
 ") if @ARGV < 4;
 
