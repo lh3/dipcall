@@ -4,10 +4,10 @@ use strict;
 use warnings;
 use Getopt::Std;
 
-my $version = "0.2";
+my $version = "0.3";
 
 my %opts = (t=>8);
-getopts("t:d:x:mz:W:", \%opts);
+getopts("t:d:x:muz:W:", \%opts);
 
 die("Usage: run-dipcall [options] <prefix> <ref.fa> <pat.fa> <mat.fa>
 Options:
@@ -15,7 +15,8 @@ Options:
   -d FILE    unimap/minimap2 index for ref.fa []
   -x FILE    PAR on chrX; assuming male
   -z INT     Z-drop [mapper default]
-  -m         use minimap2 for mapping (unimap by default)
+  -m         use minimap2 for mapping (default)
+  -u         use unimap for mapping
   -W FILE    repetitive k-mer list; use winnowmap for mapping
 ") if @ARGV < 4;
 
@@ -40,15 +41,15 @@ $root = $exepath =~/^(\S+)\/[^\/\s]+/? $1 : undef if !defined($root);
 die "ERROR: failed to locate the root directory\n" if !defined($root);
 
 # mapper settings
-my $mapper = "unimap";
+my $mapper = "minimap2";
 my $mm2_opt = q/-xasm5 --cs -t$(N_THREADS)/;
-if (defined $opts{W}) {
+if (defined $opts{u}) {
+	$mapper = "unimap";
+} elsif (defined $opts{W}) {
 	$mapper = "winnowmap";
 	$mm2_opt .= " -r2k -W $opts{W}";
-} elsif (defined $opts{m}) {
-	$mapper = "minimap2";
-	$mm2_opt .= " -r2k";
 }
+$mapper = "minimap2" if defined($opts{m});
 $mm2_opt .= " -z$opts{z},200" if defined($opts{z});
 my $mm2_idx = defined($opts{d})? $opts{d} : $ref;
 
