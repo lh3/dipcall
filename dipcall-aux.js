@@ -1,6 +1,6 @@
 #!/usr/bin/env k8
 
-var version = "0.1";
+var version = "0.3";
 
 var getopt = function(args, ostr) {
 	var oli; // option letter list index
@@ -42,16 +42,18 @@ var getopt = function(args, ostr) {
 
 function vcfpair(args)
 {
-	var c, is_male = false, sample = 'syndip', fn_par = null, par = null;
-	while ((c = getopt(args, "ms:p:")) != null) {
+	var c, is_male = false, sample = 'syndip', fn_par = null, par = null, all_ctg = false;
+	while ((c = getopt(args, "ams:p:")) != null) {
 		if (c == 's') sample = getopt.arg;
 		else if (c == 'p') fn_par = getopt.arg, is_male = true;
+		else if (c == 'a') all_ctg = true;
 	}
 	if (getopt.ind == args.length) {
 		print("Usage: dipcall-aux.js vcfpair [options] <in.pair.vcf>");
 		print("Options:");
 		print("  -p FILE  chrX PAR; assuming male sample []");
 		print("  -s STR   sample name [" + sample + "]");
+		print("  -a       call on all contigs regardless of naming");
 		exit(1);
 	}
 
@@ -68,7 +70,7 @@ function vcfpair(args)
 		file.close();
 	}
 
-	var re_ctg = is_male? /^(chr)?([0-9]+|X|Y)$/ : /^(chr)?([0-9]+|X)$/;
+	var re_ctg = all_ctg? /^\S+$/ : is_male? /^(chr)?([0-9]+|X|Y)$/ : /^(chr)?([0-9]+|X)$/;
 	var label = ['1', '2'];
 	var buf = new Bytes();
 	var file = args[getopt.ind] == '-'? new File() : new File(args[getopt.ind]);

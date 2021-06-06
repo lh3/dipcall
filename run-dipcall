@@ -7,12 +7,13 @@ use Getopt::Std;
 my $version = "0.3";
 
 my %opts = (t=>8);
-getopts("t:d:x:muz:W:", \%opts);
+getopts("t:d:x:muz:W:a", \%opts);
 
 die("Usage: run-dipcall [options] <prefix> <ref.fa> <pat.fa> <mat.fa>
 Options:
   -t INT     number of threads [$opts{t}]
   -d FILE    unimap/minimap2 index for ref.fa []
+  -a         call on all contigs regardless of naming
   -x FILE    PAR on chrX; assuming male
   -z INT     Z-drop [mapper default]
   -m         use minimap2 for mapping (default)
@@ -87,10 +88,12 @@ push(@mak, "");
 push(@mak, "$pre.pair.vcf.gz:$pre.hap1.bam $pre.hap2.bam");
 push(@mak, q{	$(ROOT)/htsbox pileup -q5 -evcf $(REF_FA) $^ | $(ROOT)/htsbox bgzip > $@});
 push(@mak, "$pre.dip.vcf.gz:$pre.pair.vcf.gz");
+
+my $pair_opt = defined($opts{a})? "-a" : "";
 if ($is_male) {
-	push(@mak, q{	$(ROOT)/k8 $(ROOT)/dipcall-aux.js vcfpair } . qq{-p $opts{x}} . q{ $< | $(ROOT)/htsbox bgzip > $@});
+	push(@mak, q{	$(ROOT)/k8 $(ROOT)/dipcall-aux.js vcfpair} . qq{ $pair_opt -p $opts{x} } . q{$< | $(ROOT)/htsbox bgzip > $@});
 } else {
-	push(@mak, q{	$(ROOT)/k8 $(ROOT)/dipcall-aux.js vcfpair $< | $(ROOT)/htsbox bgzip > $@});
+	push(@mak, q{	$(ROOT)/k8 $(ROOT)/dipcall-aux.js vcfpair} . qq{ $pair_opt } . q{$< | $(ROOT)/htsbox bgzip > $@});
 }
 push(@mak, "");
 
