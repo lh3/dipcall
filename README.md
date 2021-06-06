@@ -1,8 +1,8 @@
 ## Getting Started
 
 ```sh
-wget https://github.com/lh3/dipcall/releases/download/v0.2/dipcall-0.2_x64-linux.tar.bz2
-tar -jxf dipcall-0.2_x64-linux.tar.bz2
+wget https://github.com/lh3/dipcall/releases/download/v0.3/dipcall-0.3_x64-linux.tar.bz2
+tar -jxf dipcall-0.3_x64-linux.tar.bz2
 # for female
 dipcall.kit/run-dipcall prefix hs38.fa pat.fa.gz mat.fa.gz > prefix.mak
 # or for male, requiring PAR regions in BED
